@@ -173,9 +173,6 @@ class Hero(Agent):
     def shield_location(self, environment: 'Earth', location: Location) -> None:
         pass
 
-    # ---------------------------------------------------------------------
-    # Per-step action
-    # ---------------------------------------------------------------------
     def act(self, environment: 'Earth') -> None:
 
         if environment.is_hq(self.get_location()):
