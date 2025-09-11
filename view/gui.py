@@ -11,24 +11,22 @@ if TYPE_CHECKING:
     from model.environment import Environment
     from controller.simulator import Simulator
 
-DARK_BG          = "#0b1220"  # deep navy for board
-PANEL_BG         = "#0f172a"  # slate-900-like
-PANEL_ACCENT     = "#172554"  # dark indigo
-TEXT_PRIMARY     = "#e2e8f0"  # slate-200
-TEXT_MUTED       = "#94a3b8"  # slate-400
+DARK_BG = "#0b1220"
+PANEL_BG = "#0f172a"
+PANEL_ACCENT = "#172554"
+TEXT_PRIMARY = "#e2e8f0"
+TEXT_MUTED = "#94a3b8"
 
-GRID_LINE        = "#334155"  # slate-700 visible on dark
-AGENT_OUTLINE    = "#0ea5e9"  # sky-500 outline
+GRID_LINE = "#334155"
+AGENT_OUTLINE = "#0ea5e9"
 
-# Bridge status colours (requested)
-BRIDGE_COMPLETE  = "#10b981"  # green-500
-BRIDGE_DAMAGED   = "#f97316"  # orange-500
-BRIDGE_BUILDING  = "#facc15"  # amber-400
-BACKGROUND_EMPTY = DARK_BG     # board background
+BRIDGE_COMPLETE = "#10b981"
+BRIDGE_DAMAGED = "#f97316"
+BRIDGE_BUILDING = "#facc15"
+BACKGROUND_EMPTY = DARK_BG
 
 
 class Gui(tk.Tk):
-
     def __init__(self, environment: Environment, agent_colours: dict, simulator: Optional['Simulator'] = None):
         super().__init__()
         self.__environment = environment
@@ -66,11 +64,9 @@ class Gui(tk.Tk):
         size = min(cw, ch)
         cell = size / max(W, H)
 
-        # centre the square
         ox = (cw - size) / 2.0
         oy = (ch - size) / 2.0
 
-        # grid lines
         for i in range(W + 1):
             x = ox + i * cell
             self.world_canvas.create_line(x, oy, x, oy + H * cell, fill=GRID_LINE)
@@ -101,66 +97,18 @@ class Gui(tk.Tk):
                 y1 = y0 + cell
                 self.world_canvas.create_rectangle(x0, y0, x1, y1, fill=bg, outline=GRID_LINE)
 
-        # for agents draw different shapes per class
-        pad = max(2, int(cell * 0.25))  # margin => shapes do not fill entire cell
+        pad = max(2, int(cell * 0.32))
         for r in range(H):
             for c in range(W):
                 agent = self.__environment.get_agent(Location(c, r))
                 if not agent:
                     continue
-                agent_cls = agent.__class__
-                col = self.__agent_colours.get(agent_cls, "#38bdf8")  # fallback colour
+                col = self.__agent_colours.get(agent.__class__, "#38bdf8")
                 x0 = ox + c * cell + pad
                 y0 = oy + r * cell + pad
                 x1 = ox + (c + 1) * cell - pad
                 y1 = oy + (r + 1) * cell - pad
-                w = x1 - x0
-                h = y1 - y0
-                cx = x0 + w / 2.0
-                cy = y0 + h / 2.0
-                if agent_cls.__name__ == "ReedRichards":
-                    self.world_canvas.create_rectangle(x0, y0, x1, y1, fill=col, outline=AGENT_OUTLINE, width=1.0)
-                elif agent_cls.__name__ == "SueStorm":
-                    points = [
-                        (cx, y0),
-                        (x1, y1),
-                        (x0, y1),
-                    ]
-                    self.world_canvas.create_polygon(points, fill=col, outline=AGENT_OUTLINE)
-                elif agent_cls.__name__ == "JohnnyStorm":
-                    points = [
-                        (cx, y0),
-                        (x1, cy),
-                        (cx, y1),
-                        (x0, cy),
-                    ]
-                    self.world_canvas.create_polygon(points, fill=col, outline=AGENT_OUTLINE)
-                elif agent_cls.__name__ == "BenGrimm":
-                    points = [
-                        (x0 + w * 0.25, y0),
-                        (x0 + w * 0.75, y0),
-                        (x1, y0 + h * 0.5),
-                        (x0 + w * 0.75, y1),
-                        (x0 + w * 0.25, y1),
-                        (x0, y0 + h * 0.5),
-                    ]
-                    self.world_canvas.create_polygon(points, fill=col, outline=AGENT_OUTLINE)
-                elif agent_cls.__name__ == "SilverSurfer":
-                    self.world_canvas.create_oval(x0, y0, x1, y1, fill=col, outline=AGENT_OUTLINE, width=1.0)
-                elif agent_cls.__name__ == "GalactusProjection":
-                    t = min(w, h) * 0.3
-                    half_t = t / 2.0
-                    points = [
-                        (cx - half_t, y0), (cx + half_t, y0),
-                        (cx + half_t, cy - half_t), (x1, cy - half_t),
-                        (x1, cy + half_t), (cx + half_t, cy + half_t),
-                        (cx + half_t, y1), (cx - half_t, y1),
-                        (cx - half_t, cy + half_t), (x0, cy + half_t),
-                        (x0, cy - half_t), (cx - half_t, cy - half_t)
-                    ]
-                    self.world_canvas.create_polygon(points, fill=col, outline=AGENT_OUTLINE)
-                else:
-                    self.world_canvas.create_oval(x0, y0, x1, y1, fill=col, outline=AGENT_OUTLINE, width=1.0)
+                self.world_canvas.create_oval(x0, y0, x1, y1, fill=col, outline=AGENT_OUTLINE, width=1.0)
 
         self.update_idletasks()
 
@@ -178,16 +126,15 @@ class Gui(tk.Tk):
             style.configure("Dark.TButton", padding=(10, 6), font=("", 10, "bold"))
             style.map("Dark.TButton",
                       foreground=[("active", TEXT_PRIMARY)],
-                      background=[("active", "#1f2937")])  # slate-800 on hover
+                      background=[("active", "#1f2937")])
         except Exception:
             pass
 
-        # start maximized
         try:
-            self.state("zoomed")             # Windows
+            self.state("zoomed")
         except Exception:
             try:
-                self.attributes("-zoomed", True)  # X11
+                self.attributes("-zoomed", True)
             except Exception:
                 self.minsize(1000, 780)
 
@@ -239,7 +186,7 @@ class Gui(tk.Tk):
             ttk.Label(parent, text=text, style="Muted.TLabel").pack(side=tk.LEFT, padx=(4, 12))
 
         swatch(legend_frame, BRIDGE_BUILDING, "Yellow = being built")
-        swatch(legend_frame, BRIDGE_DAMAGED,  "Orange = damaged")
+        swatch(legend_frame, BRIDGE_DAMAGED, "Orange = damaged")
         swatch(legend_frame, BRIDGE_COMPLETE, "Green = complete")
 
         self.legend_panel = ttk.Frame(self, style="Dark.TFrame", padding=(12, 0))
@@ -315,7 +262,7 @@ class Gui(tk.Tk):
             return
         try:
             v = float(value)
-            self.simulator.simulation_speed = v  # steps per second; right=faster
+            self.simulator.simulation_speed = v
             if self.speed_value_label:
                 self.speed_value_label.config(text=f"{v:.1f} steps/s")
         except ValueError:
@@ -343,8 +290,6 @@ class Gui(tk.Tk):
             self.stats_labels["Galactus"].config(text=f"Galactus: at ({gx}, {gy})")
         else:
             self.stats_labels["Galactus"].config(text="Galactus: none")
-
-        # Status + reason
         if sim.mission_failed:
             status_text = "Mission Failed"
             reason = sim.status_reason or "Environment signaled mission failure"
