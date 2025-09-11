@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 
 class SilverSurfer(Agent):
-
     max_energy: int = 100
 
     def __init__(self, location: Location) -> None:
@@ -57,7 +56,14 @@ class SilverSurfer(Agent):
         bridges = mars.get_all_bridges()
         if not bridges:
             return None
-        candidates = [b for b in bridges if not b.is_complete() or not b.damaged]
+        candidates: list['Bridge'] = []
+        for b in bridges:
+            if getattr(b, "damaged", False):
+                continue
+            occupant = mars.get_agent(b.location)
+            if occupant is not None and not isinstance(occupant, SilverSurfer):
+                continue
+            candidates.append(b)
         if not candidates:
             return None
         candidates.sort(key=lambda b: self.distance(self.get_location(), b.location, mars))
@@ -67,7 +73,7 @@ class SilverSurfer(Agent):
         if self.energy < 20:
             self.retreating = True
             self.energy = min(self.max_energy, self.energy + 5)
-            dir = random.choice([(-1,0),(1,0),(0,-1),(0,1)])
+            dir = random.choice([(-1, 0), (1, 0), (0, -1), (0, 1)])
             nx = (self.get_location().get_x() + dir[0]) % mars.get_width()
             ny = (self.get_location().get_y() + dir[1]) % mars.get_height()
             if mars.get_agent(Location(nx, ny)) is None:
@@ -81,7 +87,26 @@ class SilverSurfer(Agent):
 
         target_bridge = self.find_target_bridge(mars)
         if target_bridge is None:
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            for _ in range(2):
+                random.shuffle(directions)
+                moved = False
+                for dx, dy in directions:
+                    nx = (self.get_location().get_x() + dx) % mars.get_width()
+                    ny = (self.get_location().get_y() + dy) % mars.get_height()
+                    new_loc = Location(nx, ny)
+                    occupant = mars.get_agent(new_loc)
+                    if occupant is None:
+                        mars.set_agent(None, self.get_location())
+                        mars.set_agent(self, new_loc)
+                        self.set_location(new_loc)
+                        self.energy = max(0, self.energy - 1)
+                        moved = True
+                        break
+                if not moved:
+                    break
             return
+
         steps = 2
         for _ in range(steps):
             if self.distance(self.get_location(), target_bridge.location, mars) == 0:
@@ -95,6 +120,7 @@ class SilverSurfer(Agent):
             mars.set_agent(self, new_loc)
             self.set_location(new_loc)
             self.energy = max(0, self.energy - 1)
+
         if (self.get_location().get_x() % mars.get_width() == target_bridge.location.get_x() % mars.get_width() and
             self.get_location().get_y() % mars.get_height() == target_bridge.location.get_y() % mars.get_height()):
             if self.energy > 0:

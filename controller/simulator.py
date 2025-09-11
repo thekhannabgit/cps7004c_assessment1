@@ -20,29 +20,37 @@ class Simulator:
         self.mission_completed = False
         self.status_reason: str = ""
 
+        # Agent collections
         self.heroes: list = []
         self.surfer: SilverSurfer | None = None
         self.galactus: GalactusProjection | None = None
 
+        # Bridges
         self.bridges: list[Bridge] = []
 
+        # Build initial world
         self._generate_initial_world()
 
+        # Loop control
         self.is_running = False
         self.paused = False
 
+        # ⚡ Speed is **steps per second** (higher = faster)
+        # Slightly calmer default to let users watch early game
         self.simulation_speed = 5.0
 
+
         self.agent_colours = {
-            ReedRichards:        "#60a5fa",  # blue-400
-            SueStorm:            "#22d3ee",  # cyan-400
-            JohnnyStorm:         "#fbbf24",  # amber-400
-            BenGrimm:            "#f59e0b",  # amber-500
-            SilverSurfer:        "#d1d5db",  # gray-300
-            GalactusProjection:  "#a78bfa",  # violet-400
-            None:                "#0b1220",  # board bg
+            ReedRichards:       "#3b82f6",  # blue-500
+            SueStorm:           "#06b6d4",  # cyan-500
+            JohnnyStorm:        "#f97316",  # orange-500
+            BenGrimm:           "#d97706",  # amber-600
+            SilverSurfer:       "#f5f5f5",  # light gray (silver)
+            GalactusProjection: "#8b5cf6",  # violet-500
+            None:               "#0b1220",  # board bg
         }
 
+        # GUI
         self.gui = Gui(self.mars, self.agent_colours, simulator=self)
         self.gui.render()
 
@@ -81,17 +89,18 @@ class Simulator:
 
 
         self.franklin_location = Location(0, 0)
-        self.surfer_spawn_step = 15
-        self.galactus_spawn_step = 30
+        self.surfer_spawn_step = 15   # was 10
+        self.galactus_spawn_step = 30 # was 20
 
+    # ------------------------------------------------------------------ loop control
 
     def run(self) -> None:
+        """Start the simulation loop."""
         self.is_running = True
         self.paused = False
         self.schedule_next_step()
 
     def schedule_next_step(self) -> None:
-
         delay_ms = max(1, int(1000 / max(0.1, self.simulation_speed)))
         if not self.gui.is_closed() and self.is_running:
             self._after_id = self.gui.after(delay_ms, self._tick)
@@ -115,7 +124,7 @@ class Simulator:
 
 
     def _update(self) -> None:
-        # Spawn Silver Surfer
+
         if self.surfer is None and self.step_count >= self.surfer_spawn_step:
             while True:
                 x = random.randint(0, self.mars.get_width() - 1)
@@ -126,7 +135,6 @@ class Simulator:
                     self.mars.set_agent(self.surfer, loc)
                     break
 
-        # Spawn Galactus
         if self.galactus is None and self.step_count >= self.galactus_spawn_step:
             loc = Location(self.mars.get_width() - 1, self.mars.get_height() - 1)
             self.galactus = GalactusProjection(loc, self.franklin_location)
@@ -150,17 +158,16 @@ class Simulator:
                     a.energy -= give
                     b.energy = min(b.max_energy, b.energy + give)
 
-        # Surfer & Galactus act
         if self.surfer:
             self.surfer.act(self.mars)
         if self.galactus:
             self.galactus.act(self.mars)
 
-        #all bridges complete & undamaged
         if not self.mission_failed:
             if self.bridges and all((not br.damaged) and br.is_complete() for br in self.bridges):
                 self.mission_completed = True
                 self.status_reason = "All bridges complete and undamaged"
+
 
 
         if not self.mission_completed and hasattr(self.mars, "mission_failed") and self.mars.mission_failed:
@@ -174,7 +181,6 @@ class Simulator:
     def _is_at(a: Location, b: Location) -> bool:
         return a.get_x() == b.get_x() and a.get_y() == b.get_y()
 
-    # ------------------------------------------------------------------ reset
 
     def reset(self) -> None:
 
