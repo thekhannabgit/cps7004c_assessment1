@@ -19,6 +19,14 @@ class SilverSurfer(Agent):
         super().__init__(location)
         self.energy = self.max_energy
         self.retreating = False
+        self.last_target_xy: tuple[int, int] | None = None
+        self.target_cooldown: int = 0
+
+    def at_same_cell(self, mars: 'Mars', loc: Location) -> bool:
+        return (
+            self.get_location().get_x() % mars.get_width() == loc.get_x() % mars.get_width() and
+            self.get_location().get_y() % mars.get_height() == loc.get_y() % mars.get_height()
+        )
 
     def distance(self, loc1: Location, loc2: Location, mars: 'Mars') -> int:
         width = mars.get_width()
@@ -58,11 +66,14 @@ class SilverSurfer(Agent):
             return None
         candidates: list['Bridge'] = []
         for b in bridges:
-            if getattr(b, "damaged", False):
+            if b.is_complete() or getattr(b, "damaged", False):
                 continue
             occupant = mars.get_agent(b.location)
             if occupant is not None and not isinstance(occupant, SilverSurfer):
                 continue
+            if self.target_cooldown > 0 and self.last_target_xy is not None:
+                if (b.location.get_x() % mars.get_width(), b.location.get_y() % mars.get_height()) == self.last_target_xy:
+                    continue
             candidates.append(b)
         if not candidates:
             return None
@@ -73,7 +84,7 @@ class SilverSurfer(Agent):
         if self.energy < 20:
             self.retreating = True
             self.energy = min(self.max_energy, self.energy + 5)
-            dir = random.choice([(-1, 0), (1, 0), (0, -1), (0, 1)])
+            dir = random.choice([(-1,0),(1,0),(0,-1),(0,1)])
             nx = (self.get_location().get_x() + dir[0]) % mars.get_width()
             ny = (self.get_location().get_y() + dir[1]) % mars.get_height()
             if mars.get_agent(Location(nx, ny)) is None:
@@ -84,6 +95,9 @@ class SilverSurfer(Agent):
             if self.energy >= 40:
                 self.retreating = False
             return
+
+        if self.target_cooldown > 0:
+            self.target_cooldown -= 1
 
         target_bridge = self.find_target_bridge(mars)
         if target_bridge is None:
@@ -121,8 +135,12 @@ class SilverSurfer(Agent):
             self.set_location(new_loc)
             self.energy = max(0, self.energy - 1)
 
-        if (self.get_location().get_x() % mars.get_width() == target_bridge.location.get_x() % mars.get_width() and
-            self.get_location().get_y() % mars.get_height() == target_bridge.location.get_y() % mars.get_height()):
+        if self.at_same_cell(mars, target_bridge.location):
             if self.energy > 0:
                 target_bridge.damage(20)
                 self.energy = max(0, self.energy - 5)
+                self.last_target_xy = (
+                    target_bridge.location.get_x() % mars.get_width(),
+                    target_bridge.location.get_y() % mars.get_height(),
+                )
+                self.target_cooldown = 6
