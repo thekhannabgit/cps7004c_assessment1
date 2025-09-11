@@ -20,7 +20,6 @@ def show_splash(image_path: str | None = None, duration_ms: int = 2000) -> None:
 
     frame = ttk.Frame(root)
     frame.pack(expand=True, fill="both")
-
     title = ttk.Label(frame, text="Fantastic Four — Earth Defence",
                       font=("", 16, "bold"), foreground="#e2e8f0", background=bg_colour)
     title.pack(pady=(20, 10))
