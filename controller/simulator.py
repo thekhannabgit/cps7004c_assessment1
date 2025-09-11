@@ -9,56 +9,43 @@ from view.gui import Gui
 
 
 class Simulator:
+    """Core simulation + scheduling."""
 
     def __init__(self) -> None:
         self._after_id = None
-
         self.step_count = 0
         self.mars = Mars()
-
         self.mission_failed = False
         self.mission_completed = False
         self.status_reason: str = ""
 
-        # Agent collections
         self.heroes: list = []
         self.surfer: SilverSurfer | None = None
         self.galactus: GalactusProjection | None = None
-
-        # Bridges
         self.bridges: list[Bridge] = []
 
-        # Build initial world
         self._generate_initial_world()
 
-        # Loop control
         self.is_running = False
         self.paused = False
-
-        # ⚡ Speed is **steps per second** (higher = faster)
-        # Slightly calmer default to let users watch early game
         self.simulation_speed = 5.0
 
-
         self.agent_colours = {
-            ReedRichards:       "#3b82f6",  # blue-500
-            SueStorm:           "#06b6d4",  # cyan-500
-            JohnnyStorm:        "#f97316",  # orange-500
-            BenGrimm:           "#d97706",  # amber-600
-            SilverSurfer:       "#f5f5f5",  # light gray (silver)
-            GalactusProjection: "#8b5cf6",  # violet-500
-            None:               "#0b1220",  # board bg
+            ReedRichards:       "#60a5fa",
+            SueStorm:           "#22d3ee",
+            JohnnyStorm:        "#f59e0b",
+            BenGrimm:           "#e11d48",
+            SilverSurfer:       "#d1d5db",
+            GalactusProjection: "#a78bfa",
+            None:               "#0b1220",
         }
 
-        # GUI
         self.gui = Gui(self.mars, self.agent_colours, simulator=self)
         self.gui.render()
-
 
     def _generate_initial_world(self) -> None:
         width  = self.mars.get_width()
         height = self.mars.get_height()
-
         centre_x = width // 2
         centre_y = height // 2
 
@@ -72,10 +59,9 @@ class Simulator:
             self.heroes.append(hero)
             self.mars.set_agent(hero, loc)
 
-
         self.bridges.clear()
         forbidden = {(centre_x, centre_y)} | { (h.get_location().get_x(), h.get_location().get_y()) for h in self.heroes }
-        target_sites = 7  # ↑ from 5
+        target_sites = 7
         while len(self.bridges) < target_sites:
             x = random.randint(0, width - 1)
             y = random.randint(0, height - 1)
@@ -87,15 +73,11 @@ class Simulator:
                 self.bridges.append(br)
                 self.mars.add_bridge(br)
 
-
         self.franklin_location = Location(0, 0)
-        self.surfer_spawn_step = 15   # was 10
-        self.galactus_spawn_step = 30 # was 20
-
-    # ------------------------------------------------------------------ loop control
+        self.surfer_spawn_step = 12
+        self.galactus_spawn_step = 24
 
     def run(self) -> None:
-        """Start the simulation loop."""
         self.is_running = True
         self.paused = False
         self.schedule_next_step()
@@ -108,23 +90,18 @@ class Simulator:
     def _tick(self) -> None:
         if self.gui.is_closed() or not self.is_running:
             return
-
         if self.paused:
             self.schedule_next_step()
             return
-
         self.step_count += 1
         self._update()
         self.gui.render()
-
         if self.mission_failed or self.mission_completed:
             self.is_running = False
             return
         self.schedule_next_step()
 
-
     def _update(self) -> None:
-
         if self.surfer is None and self.step_count >= self.surfer_spawn_step:
             while True:
                 x = random.randint(0, self.mars.get_width() - 1)
@@ -143,7 +120,7 @@ class Simulator:
         for hero in list(self.heroes):
             hero.act(self.mars)
 
-        width  = self.mars.get_width()
+        width = self.mars.get_width()
         height = self.mars.get_height()
         for a in self.heroes:
             for b in self.heroes:
@@ -168,8 +145,6 @@ class Simulator:
                 self.mission_completed = True
                 self.status_reason = "All bridges complete and undamaged"
 
-
-
         if not self.mission_completed and hasattr(self.mars, "mission_failed") and self.mars.mission_failed:
             if self.galactus and self._is_at(self.galactus.get_location(), self.franklin_location):
                 self.status_reason = "Galactus reached Franklin"
@@ -181,9 +156,7 @@ class Simulator:
     def _is_at(a: Location, b: Location) -> bool:
         return a.get_x() == b.get_x() and a.get_y() == b.get_y()
 
-
     def reset(self) -> None:
-
         if getattr(self, "_after_id", None):
             try:
                 self.gui.after_cancel(self._after_id)
@@ -215,6 +188,11 @@ class Simulator:
 
 
 if __name__ == "__main__":
+    try:
+        from view.splash import show_splash
+        show_splash("assets/splash.gif", duration_ms=2000)
+    except Exception:
+        pass
     sim = Simulator()
     sim.run()
     sim.gui.mainloop()

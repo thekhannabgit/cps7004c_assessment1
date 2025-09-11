@@ -16,10 +16,8 @@ PANEL_BG = "#0f172a"
 PANEL_ACCENT = "#172554"
 TEXT_PRIMARY = "#e2e8f0"
 TEXT_MUTED = "#94a3b8"
-
 GRID_LINE = "#334155"
 AGENT_OUTLINE = "#0ea5e9"
-
 BRIDGE_COMPLETE = "#10b981"
 BRIDGE_DAMAGED = "#f97316"
 BRIDGE_BUILDING = "#facc15"
@@ -40,7 +38,6 @@ class Gui(tk.Tk):
         self.reset_button: Optional[tk.Button] = None
         self.speed_scale: Optional[ttk.Scale] = None
         self.speed_value_label: Optional[ttk.Label] = None
-
         self.grid_container: Optional[ttk.Frame] = None
         self.world_canvas: Optional[tk.Canvas] = None
 
@@ -58,12 +55,10 @@ class Gui(tk.Tk):
 
         W = self.__environment.get_width()
         H = self.__environment.get_height()
-
         cw = int(self.world_canvas.winfo_width() or 800)
         ch = int(self.world_canvas.winfo_height() or 800)
         size = min(cw, ch)
         cell = size / max(W, H)
-
         ox = (cw - size) / 2.0
         oy = (ch - size) / 2.0
 
@@ -90,151 +85,61 @@ class Gui(tk.Tk):
                         bg = BRIDGE_BUILDING
                 else:
                     bg = BACKGROUND_EMPTY
-
                 x0 = ox + c * cell
                 y0 = oy + r * cell
                 x1 = x0 + cell
                 y1 = y0 + cell
                 self.world_canvas.create_rectangle(x0, y0, x1, y1, fill=bg, outline=GRID_LINE)
 
-        pad = max(2, int(cell * 0.32))
+        pad = max(2, int(cell * 0.25))
         for r in range(H):
             for c in range(W):
                 agent = self.__environment.get_agent(Location(c, r))
                 if not agent:
                     continue
-                col = self.__agent_colours.get(agent.__class__, "#38bdf8")
+                agent_cls = agent.__class__
+                col = self.__agent_colours.get(agent_cls, "#38bdf8")
                 x0 = ox + c * cell + pad
                 y0 = oy + r * cell + pad
                 x1 = ox + (c + 1) * cell - pad
                 y1 = oy + (r + 1) * cell - pad
-                self.world_canvas.create_oval(x0, y0, x1, y1, fill=col, outline=AGENT_OUTLINE, width=1.0)
+                w = x1 - x0
+                h = y1 - y0
+                cx = x0 + w / 2.0
+                cy = y0 + h / 2.0
+                if agent_cls.__name__ == "ReedRichards":
+                    self.world_canvas.create_rectangle(x0, y0, x1, y1, fill=col, outline=AGENT_OUTLINE, width=1.0)
+                elif agent_cls.__name__ == "SueStorm":
+                    points = [(cx, y0), (x1, y1), (x0, y1)]
+                    self.world_canvas.create_polygon(points, fill=col, outline=AGENT_OUTLINE)
+                elif agent_cls.__name__ == "JohnnyStorm":
+                    points = [(cx, y0), (x1, cy), (cx, y1), (x0, cy)]
+                    self.world_canvas.create_polygon(points, fill=col, outline=AGENT_OUTLINE)
+                elif agent_cls.__name__ == "BenGrimm":
+                    points = [
+                        (x0 + w * 0.25, y0), (x0 + w * 0.75, y0),
+                        (x1, y0 + h * 0.5), (x0 + w * 0.75, y1),
+                        (x0 + w * 0.25, y1), (x0, y0 + h * 0.5),
+                    ]
+                    self.world_canvas.create_polygon(points, fill=col, outline=AGENT_OUTLINE)
+                elif agent_cls.__name__ == "SilverSurfer":
+                    self.world_canvas.create_oval(x0, y0, x1, y1, fill=col, outline=AGENT_OUTLINE, width=1.0)
+                elif agent_cls.__name__ == "GalactusProjection":
+                    t = min(w, h) * 0.3
+                    half_t = t / 2.0
+                    points = [
+                        (cx - half_t, y0), (cx + half_t, y0),
+                        (cx + half_t, cy - half_t), (x1, cy - half_t),
+                        (x1, cy + half_t), (cx + half_t, cy + half_t),
+                        (cx + half_t, y1), (cx - half_t, y1),
+                        (cx - half_t, cy + half_t), (x0, cy + half_t),
+                        (x0, cy - half_t), (cx - half_t, cy - half_t)
+                    ]
+                    self.world_canvas.create_polygon(points, fill=col, outline=AGENT_OUTLINE)
+                else:
+                    self.world_canvas.create_oval(x0, y0, x1, y1, fill=col, outline=AGENT_OUTLINE, width=1.0)
 
         self.update_idletasks()
-
-    def __init_gui(self):
-        self.title(Config.simulation_name)
-        self.configure(bg=PANEL_BG)
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
-
-        try:
-            style = ttk.Style(self)
-            style.theme_use("clam")
-            style.configure("Dark.TFrame", background=PANEL_BG)
-            style.configure("Dark.TLabel", background=PANEL_BG, foreground=TEXT_PRIMARY)
-            style.configure("Muted.TLabel", background=PANEL_BG, foreground=TEXT_MUTED)
-            style.configure("Dark.TButton", padding=(10, 6), font=("", 10, "bold"))
-            style.map("Dark.TButton",
-                      foreground=[("active", TEXT_PRIMARY)],
-                      background=[("active", "#1f2937")])
-        except Exception:
-            pass
-
-        try:
-            self.state("zoomed")
-        except Exception:
-            try:
-                self.attributes("-zoomed", True)
-            except Exception:
-                self.minsize(1000, 780)
-
-        self.grid_rowconfigure(4, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-
-    def __init_layout(self) -> None:
-        top = ttk.Frame(self, style="Dark.TFrame", padding=(12, 10))
-        top.grid(row=0, column=0, sticky="ew")
-        top.columnconfigure(0, weight=1)
-        top.columnconfigure(1, weight=0)
-
-        stats = ttk.Frame(top, style="Dark.TFrame")
-        stats.grid(row=0, column=0, sticky="w", padx=(0, 12))
-        title = ttk.Label(stats, text="Mission Telemetry", style="Dark.TLabel", font=("", 12, "bold"))
-        title.pack(anchor="w", pady=(0, 6))
-        for key in ["Step", "Bridges", "Heroes", "Surfer", "Galactus", "Status"]:
-            lbl = ttk.Label(stats, text=f"{key}: ?", style="Dark.TLabel", font=("", 10))
-            lbl.pack(anchor="w", pady=1)
-            self.stats_labels[key] = lbl
-
-        controls = ttk.Frame(top, style="Dark.TFrame")
-        controls.grid(row=0, column=1, sticky="e")
-        self.pause_button = ttk.Button(controls, text="Pause", style="Dark.TButton", command=self.toggle_pause)
-        self.pause_button.pack(side=tk.LEFT, padx=4)
-        self.reset_button = ttk.Button(controls, text="Reset", style="Dark.TButton", command=self.reset_simulation)
-        self.reset_button.pack(side=tk.LEFT, padx=4)
-
-        ttk.Label(controls, text="Speed", style="Dark.TLabel").pack(side=tk.LEFT, padx=(10, 4))
-        self.speed_scale = ttk.Scale(
-            controls, from_=1.0, to=20.0, orient=tk.HORIZONTAL,
-            command=self.on_speed_change, length=220
-        )
-        self.speed_scale.set(self.simulator.simulation_speed if self.simulator else 5.0)
-        self.speed_scale.pack(side=tk.LEFT, padx=(0, 4))
-        self.speed_value_label = ttk.Label(controls,
-                                           text=f"{self.speed_scale.get():.1f} steps/s",
-                                           style="Muted.TLabel")
-        self.speed_value_label.pack(side=tk.LEFT)
-
-        legend_frame = ttk.Frame(self, style="Dark.TFrame", padding=(12, 6))
-        legend_frame.grid(row=1, column=0, sticky="ew")
-        ttk.Label(legend_frame, text="Bridge status:", style="Dark.TLabel", font=("", 10, "bold")).pack(side=tk.LEFT, padx=(0, 8))
-
-        def swatch(parent, colour, text):
-            c = tk.Canvas(parent, width=16, height=16, highlightthickness=0, bg=PANEL_BG, bd=0)
-            c.create_rectangle(0, 0, 16, 16, fill=colour, outline="#0f172a")
-            c.pack(side=tk.LEFT)
-            ttk.Label(parent, text=text, style="Muted.TLabel").pack(side=tk.LEFT, padx=(4, 12))
-
-        swatch(legend_frame, BRIDGE_BUILDING, "Yellow = being built")
-        swatch(legend_frame, BRIDGE_DAMAGED, "Orange = damaged")
-        swatch(legend_frame, BRIDGE_COMPLETE, "Green = complete")
-
-        self.legend_panel = ttk.Frame(self, style="Dark.TFrame", padding=(12, 0))
-        self.legend_panel.grid(row=2, column=0, sticky="ew")
-
-        divider = tk.Frame(self, height=1, bg=PANEL_ACCENT, bd=0)
-        divider.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 0))
-
-        self.grid_container = ttk.Frame(self, style="Dark.TFrame")
-        self.grid_container.grid(row=4, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        self.grid_container.rowconfigure(0, weight=1)
-        self.grid_container.columnconfigure(0, weight=1)
-
-        self.world_canvas = tk.Canvas(self.grid_container, highlightthickness=0, bg=DARK_BG, bd=0)
-        self.world_canvas.grid(row=0, column=0, sticky="nsew")
-
-        def _resize(_e):
-            if not self.world_canvas:
-                return
-            w = self.grid_container.winfo_width()
-            h = self.grid_container.winfo_height()
-            size = min(w, h)
-            self.world_canvas.config(width=size, height=size)
-            self.render()
-
-        self.grid_container.bind("<Configure>", _resize)
-
-    def update_legends(self):
-        counts = {}
-        for r in range(self.__environment.get_height()):
-            for c in range(self.__environment.get_width()):
-                a = self.__environment.get_agent(Location(c, r))
-                if a:
-                    cls = a.__class__
-                    counts[cls] = counts.get(cls, 0) + 1
-
-        for w in self.legend_panel.winfo_children():
-            w.destroy()
-
-        if counts:
-            ttk.Label(self.legend_panel, text="Agents:", style="Dark.TLabel", font=("", 10, "bold")).pack(side=tk.LEFT, padx=(0, 8))
-
-        for cls, count in sorted(counts.items(), key=lambda x: x[0].__name__):
-            colour = self.__agent_colours.get(cls, "#38bdf8")
-            c = tk.Canvas(self.legend_panel, width=16, height=16, highlightthickness=0, bg=PANEL_BG, bd=0)
-            c.create_rectangle(0, 0, 16, 16, fill=colour, outline=PANEL_ACCENT)
-            c.pack(side=tk.LEFT)
-            ttk.Label(self.legend_panel, text=f"{cls.__name__} ({count})", style="Muted.TLabel").pack(side=tk.LEFT, padx=(4, 12))
 
     def on_closing(self):
         if messagebox.askokcancel("Quit", "Do you want to quit?"):

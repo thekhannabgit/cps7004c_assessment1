@@ -1,404 +1,246 @@
 from __future__ import annotations
 
-import heapq
-import itertools
-import math
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+import random
+from collections import deque
+from typing import List, Optional, TYPE_CHECKING
 
-from controller.config import Config
 from model.agent import Agent
 from model.location import Location
-from model.bridge import Bridge
 
 if TYPE_CHECKING:
-    from model.earth import Earth
-    from model.silver_surfer import SilverSurfer
-    from model.galactus import GalactusProjection
-    from model.hero import Hero
-
-
-@dataclass
-class PathNode:
-    f: float
-    g: float
-    h: float
-    location: Location
-    parent: Optional['PathNode']
+    from model.location import Location
+    from model.mars import Mars
+    from model.bridge import Bridge
 
 
 class Hero(Agent):
     max_energy: int = 100
-    move_cost: int = 1
-    repair_cost: int = 1
-    attack_cost: int = 2
-    shield_cost: int = 3
+    repair_rate: int = 10
+    attack_range: int = 1
+    name: str = "Hero"
 
-    def __init__(self, name: str, location: Location, hq_location: Location) -> None:
+    def __init__(self, location: Location) -> None:
         super().__init__(location)
-        self.name: str = name
-        self._energy: int = self.max_energy
-        self.hq_location: Location = hq_location
-        # track if shield active for Sue; number of steps left
-        self._shield_duration: int = 0
+        self.energy = self.max_energy
+        self.is_recharging = False
 
-    @property
-    def energy(self) -> int:
-        return self._energy
+    def hq_location(self, mars: 'Mars') -> Location:
+        return Location(mars.get_width() // 2, mars.get_height() // 2)
 
-    def consume_energy(self, amount: int) -> None:
-        self._energy = max(self._energy - amount, 0)
+    def at_location(self, mars: 'Mars', a: Location, b: Location) -> bool:
+        return (
+            a.get_x() % mars.get_width() == b.get_x() % mars.get_width() and
+            a.get_y() % mars.get_height() == b.get_y() % mars.get_height()
+        )
 
-    def recharge(self) -> None:
-        if self._energy < self.max_energy:
-            self._energy += 1
+    def __repr__(self) -> str:
+        return f"{self.name}(energy={self.energy})"
 
-    def is_exhausted(self) -> bool:
-        return self._energy <= 0
-
-    def _loc_key(self, loc: Location, width: Optional[int] = None, height: Optional[int] = None) -> Tuple[int, int]:
-        if width is None or height is None:
-            # fallback when environment sizes aren't provided
-            return (loc.get_x(), loc.get_y())
-        return (loc.get_x() % width, loc.get_y() % height)
-
-    def _heuristic(self, a: Location, b: Location, width: int, height: int) -> int:
-        dx = abs(a.get_x() - b.get_x())
-        dy = abs(a.get_y() - b.get_y())
+    def distance(self, loc1: Location, loc2: Location, mars: 'Mars') -> int:
+        width = mars.get_width()
+        height = mars.get_height()
+        dx = abs(loc1.get_x() - loc2.get_x())
+        dy = abs(loc1.get_y() - loc2.get_y())
         dx = min(dx, width - dx)
         dy = min(dy, height - dy)
         return dx + dy
 
-    def _neighbors4(self, loc: Location, width: int, height: int) -> List[Location]:
-        x, y = loc.get_x(), loc.get_y()
-        return [
-            Location((x + 1) % width, y),
-            Location((x - 1) % width, y),
-            Location(x, (y + 1) % height),
-            Location(x, (y - 1) % height),
-        ]
-
-    def _a_star(self, environment: 'Earth', start: Location, goal: Location,
-                avoid_agents: bool = True) -> List[Location]:
-
-        if start is None or goal is None:
-            return []
-
-        width = environment.get_width()
-        height = environment.get_height()
-
-        start_key = self._loc_key(start, width, height)
-        goal_key = self._loc_key(goal, width, height)
-
-        # Min-heap of (f, tie, PathNode) to avoid comparing PathNode directly
-        open_heap: List[Tuple[float, int, PathNode]] = []
-        counter = itertools.count()
-
-        start_node = PathNode(f=0.0, g=0.0, h=self._heuristic(start, goal, width, height),
-                              location=start, parent=None)
-        heapq.heappush(open_heap, (start_node.f, next(counter), start_node))
-
-        g_score: Dict[Tuple[int, int], float] = {start_key: 0.0}
-        visited: set[Tuple[int, int]] = set()
-
-        while open_heap:
-            _, __, current = heapq.heappop(open_heap)
-            cur_key = self._loc_key(current.location, width, height)
-            if cur_key in visited:
-                continue
-            visited.add(cur_key)
-
-            if cur_key == goal_key:
-                # Reconstruct path (exclude the start location)
-                path: List[Location] = []
-                node = current
-                while node.parent is not None:
-                    path.append(node.location)
-                    node = node.parent
-                path.reverse()
-                return path
-
-            for nb in self._neighbors4(current.location, width, height):
-                nb_key = self._loc_key(nb, width, height)
-                if nb_key in visited:
-                    continue
-
-                # Treat occupied cells as blocked, unless it's the goal (soft rule)
-                if avoid_agents and nb_key != goal_key:
-                    occupant = environment.get_agent(nb)
-                    if occupant is not None:
-                        continue
-
-                tentative_g = g_score[cur_key] + 1
-                if tentative_g < g_score.get(nb_key, float('inf')):
-                    h_val = self._heuristic(nb, goal, width, height)
-                    f_val = tentative_g + h_val
-                    g_score[nb_key] = tentative_g
-                    node = PathNode(f=f_val, g=tentative_g, h=h_val, location=nb, parent=current)
-                    heapq.heappush(open_heap, (f_val, next(counter), node))
-
-        return []
-
-    def move_along_path(self, environment: 'Earth', path: List[Location]) -> None:
-        if not path or self.is_exhausted():
-            return
-        next_loc = path[0]
-        # Remove from current position
-        environment.set_agent(None, self.get_location())
-        # Place at new position
-        environment.set_agent(self, next_loc)
-        self.set_location(next_loc)
-        # consume energy
-        self.consume_energy(self.move_cost)
-
-    def repair_bridge(self, environment: 'Earth') -> None:
-        bridge = environment.get_bridge(self.get_location())
-        if bridge is not None and not bridge.is_destroyed and not bridge.is_complete and not self.is_exhausted():
-            if self._energy >= self.repair_cost:
-                self.consume_energy(self.repair_cost)
-                bridge.repair(self)
-
-    def share_energy(self, teammate: 'Hero', amount: int) -> None:
-        amount = min(amount, self._energy)
-        capacity = teammate.max_energy - teammate.energy
-        transfer = min(amount, capacity)
-        if transfer <= 0:
-            return
-        self._energy -= transfer
-        teammate._energy += transfer
-
-    def attack_surfer(self, surfer: 'SilverSurfer') -> None:
-        pass
-
-    def shield_location(self, environment: 'Earth', location: Location) -> None:
-        pass
-
-    def act(self, environment: 'Earth') -> None:
-
-        if environment.is_hq(self.get_location()):
-            self.recharge()
-
-        if self.is_exhausted():
-            if not environment.is_hq(self.get_location()):
-                path = self._a_star(environment, self.get_location(), self.hq_location)
-                if path:
-                    self.move_along_path(environment, path)
-            return
-
-        bridge = environment.get_bridge(self.get_location())
-        if bridge is not None and not bridge.is_complete and not bridge.is_destroyed:
-            self.repair_bridge(environment)
-            return
-
-        target = self.find_nearest_incomplete_bridge(environment)
-        if target is None:
-            return
-
-        path = self._a_star(environment, self.get_location(), target)
-        if path:
-            self.move_along_path(environment, path)
-
-
-    def find_nearest_incomplete_bridge(self, environment: 'Earth') -> Optional[Location]:
-        bridges = [(loc_key, br) for loc_key, br in environment._bridges.items()
-                   if not br.is_complete and not br.is_destroyed]
+    def find_nearest_bridge(self, mars: 'Mars') -> Optional['Bridge']:
+        bridges = mars.get_all_bridges()
         if not bridges:
             return None
-        width, height = environment.get_width(), environment.get_height()
-        best_loc = None
-        best_dist = float('inf')
-        sx, sy = self.get_location().get_x(), self.get_location().get_y()
-        for (x, y), _ in bridges:
-            dx = abs(sx - x)
-            dy = abs(sy - y)
-            dx = min(dx, width - dx)
-            dy = min(dy, height - dy)
-            dist = dx + dy
-            if dist < best_dist:
-                best_dist = dist
-                best_loc = Location(x, y)
-        return best_loc
+        candidate_bridges = [b for b in bridges if not b.is_complete() or b.damaged]
+        if not candidate_bridges:
+            return None
+        current_location = self.get_location()
+        candidate_bridges.sort(key=lambda b: self.distance(current_location, b.location, mars))
+        return candidate_bridges[0]
+
+    def bfs_path(self, start: Location, goal: Location, mars: 'Mars') -> List[Location]:
+        width = mars.get_width()
+        height = mars.get_height()
+        start_coords = (start.get_x(), start.get_y())
+        goal_coords = (goal.get_x(), goal.get_y())
+        visited = set([start_coords])
+        queue: deque[tuple[tuple[int, int], List[tuple[int, int]]]] = deque()
+        queue.append((start_coords, []))
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        while queue:
+            (cx, cy), path = queue.popleft()
+            if (cx, cy) == goal_coords:
+                return [Location(coords[0], coords[1]) for coords in path]
+            for dx, dy in directions:
+                nx = (cx + dx) % width
+                ny = (cy + dy) % height
+                if (nx, ny) not in visited:
+                    occupant = mars.get_agent(Location(nx, ny))
+                    if occupant is None or (nx, ny) == goal_coords:
+                        visited.add((nx, ny))
+                        queue.append(((nx, ny), path + [(nx, ny)]))
+        return []
+
+    def move_towards(self, target: Location, mars: 'Mars') -> None:
+        path = self.bfs_path(self.get_location(), target, mars)
+        if not path:
+            return
+        next_location = path[0]
+        if self.energy > 0:
+            self.energy = max(0, self.energy - 1)
+        mars.set_agent(None, self.get_location())
+        new_loc = Location(next_location.get_x(), next_location.get_y())
+        mars.set_agent(self, new_loc)
+        self.set_location(new_loc)
+
+    def act(self, mars: 'Mars') -> None:
+        self.check_recharge(mars)
+        hq = self.hq_location(mars)
+        if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
+            self.move_towards(hq, mars)
+            return
+        if self.energy <= 0:
+            if not self.at_location(mars, self.get_location(), hq):
+                self.move_towards(hq, mars)
+            return
+        bridge = self.find_nearest_bridge(mars)
+        if bridge is None:
+            return
+        current_loc = self.get_location()
+        if self.at_location(mars, current_loc, bridge.location):
+            if self.energy > 0:
+                amount = self.repair_rate
+                bridge.repair(amount)
+                self.energy = max(0, self.energy - 2)
+        else:
+            self.move_towards(bridge.location, mars)
+
+    def check_recharge(self, mars: 'Mars') -> None:
+        centre_x = mars.get_width() // 2
+        centre_y = mars.get_height() // 2
+        loc = self.get_location()
+        if loc.get_x() % mars.get_width() == centre_x and loc.get_y() % mars.get_height() == centre_y:
+            self.energy = min(self.max_energy, self.energy + 20)
 
 
 class ReedRichards(Hero):
+    name = "Reed"
 
-    def __init__(self, location: Location, hq_location: Location) -> None:
-        super().__init__("Reed Richards", location, hq_location)
-
-    def find_nearest_incomplete_bridge(self, environment: 'Earth') -> Optional[Location]:
-        bridges = [(loc_key, br) for loc_key, br in environment._bridges.items()
-                   if not br.is_complete and not br.is_destroyed]
-        if not bridges:
-            return None
-        width, height = environment.get_width(), environment.get_height()
-        best_score = -float('inf')
-        best_loc = None
-
-        galactus_pos: Optional[Location] = None
-        try:
-            from model.galactus import GalactusProjection  # local import to avoid cycle
-            for row in range(height):
-                for col in range(width):
-                    agent = environment.get_agent(Location(col, row))
-                    if isinstance(agent, GalactusProjection):
-                        galactus_pos = agent.get_location()
-                        raise StopIteration
-        except StopIteration:
-            pass
-
-        sx, sy = self.get_location().get_x(), self.get_location().get_y()
-        hx, hy = environment.hq_location.get_x(), environment.hq_location.get_y()
-
-        for (x, y), _ in bridges:
-            # To hero
-            dx = abs(sx - x); dy = abs(sy - y)
-            dx = min(dx, width - dx); dy = min(dy, height - dy)
-            dist_to_hero = dx + dy
-
-            hdx = abs(hx - x); hdy = abs(hy - y)
-            hdx = min(hdx, width - hdx); hdy = min(hdy, height - hdy)
-            dist_from_hq = hdx + hdy
-
-            if galactus_pos is not None:
-                gdx = abs(galactus_pos.get_x() - x); gdy = abs(galactus_pos.get_y() - y)
-                gdx = min(gdx, width - gdx); gdy = min(gdy, height - gdy)
-                dist_to_galactus = gdx + gdy
+    def act(self, mars: 'Mars') -> None:
+        self.check_recharge(mars)
+        hq = self.hq_location(mars)
+        if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
+            self.move_towards(hq, mars)
+            return
+        if self.energy <= 0:
+            if not self.at_location(mars, self.get_location(), hq):
+                self.move_towards(hq, mars)
+            return
+        surfer = None
+        for row in range(mars.get_height()):
+            for col in range(mars.get_width()):
+                agent = mars.get_agent(Location(col, row))
+                if agent and agent.__class__.__name__ == 'SilverSurfer':
+                    surfer = agent
+                    break
+            if surfer:
+                break
+        if surfer:
+            bridges = mars.get_all_bridges()
+            candidates = [b for b in bridges if not b.is_complete() or getattr(b, "damaged", False)]
+            if candidates:
+                candidates.sort(key=lambda b: self.distance(b.location, surfer.get_location(), mars))
+                target_bridge = candidates[0]
             else:
-                dist_to_galactus = 0
-
-            score = dist_from_hq - dist_to_galactus - dist_to_hero
-            if score > best_score:
-                best_score = score
-                best_loc = Location(x, y)
-        return best_loc
-
-    def act(self, environment: 'Earth') -> None:
-        super().act(environment)
+                target_bridge = None
+        else:
+            target_bridge = self.find_nearest_bridge(mars)
+        if target_bridge is None:
+            return
+        if self.at_location(mars, self.get_location(), target_bridge.location):
+            if self.energy > 0:
+                target_bridge.repair(self.repair_rate)
+                self.energy = max(0, self.energy - 2)
+        else:
+            self.move_towards(target_bridge.location, mars)
 
 
 class SueStorm(Hero):
+    name = "Sue"
 
-    shield_duration_default: int = 3  # number of steps shield lasts
-
-    def __init__(self, location: Location, hq_location: Location) -> None:
-        super().__init__("Sue Storm", location, hq_location)
-
-    def shield_location(self, environment: 'Earth', location: Location) -> None:
-        if environment.shields is None:
-            environment.shields = {}
-        key = (location.get_x() % environment.get_width(),
-               location.get_y() % environment.get_height())
-        environment.shields[key] = self.shield_duration_default
-        self.consume_energy(self.shield_cost)
-
-    def act(self, environment: 'Earth') -> None:
-        if environment.is_hq(self.get_location()):
-            self.recharge()
-
-        if self.is_exhausted():
-            if not environment.is_hq(self.get_location()):
-                path = self._a_star(environment, self.get_location(), self.hq_location)
-                if path:
-                    self.move_along_path(environment, path)
+    def act(self, mars: 'Mars') -> None:
+        self.check_recharge(mars)
+        hq = self.hq_location(mars)
+        if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
+            self.move_towards(hq, mars)
             return
-
-        bridge = environment.get_bridge(self.get_location())
-        key = (self.get_location().get_x() % environment.get_width(),
-               self.get_location().get_y() % environment.get_height())
-        if bridge and not bridge.is_complete and not bridge.is_destroyed \
-           and environment.shields.get(key, 0) == 0 and self.energy >= self.shield_cost:
-            self.shield_location(environment, self.get_location())
+        if self.energy <= 0:
+            if not self.at_location(mars, self.get_location(), hq):
+                self.move_towards(hq, mars)
             return
-
-        if bridge and not bridge.is_complete and not bridge.is_destroyed:
-            self.repair_bridge(environment)
+        bridge = self.find_nearest_bridge(mars)
+        if bridge is None:
             return
-
-        super().act(environment)
+        current_loc = self.get_location()
+        if self.at_location(mars, current_loc, bridge.location):
+            bridge.damaged = False
+            bridge.repair(self.repair_rate)
+            self.energy = max(0, self.energy - 2)
+        else:
+            self.move_towards(bridge.location, mars)
 
 
 class JohnnyStorm(Hero):
+    name = "Johnny"
+    attack_range = 3
 
-    attack_range: int = 2
-    attack_power: int = 20
-
-    def __init__(self, location: Location, hq_location: Location) -> None:
-        super().__init__("Johnny Storm", location, hq_location)
-
-    def attack_surfer(self, surfer: 'SilverSurfer') -> None:
-        if self.energy >= self.attack_cost:
-            self.consume_energy(self.attack_cost)
-            surfer.take_damage(self.attack_power)
-
-    def find_surfer_in_range(self, environment: 'Earth') -> Optional['SilverSurfer']:
-        try:
-            from model.silver_surfer import SilverSurfer  # local import
-            width = environment.get_width()
-            height = environment.get_height()
-            sx, sy = self.get_location().get_x(), self.get_location().get_y()
-            for row in range(height):
-                for col in range(width):
-                    agent = environment.get_agent(Location(col, row))
-                    if isinstance(agent, SilverSurfer):
-                        dx = abs(sx - col); dy = abs(sy - row)
-                        dx = min(dx, width - dx); dy = min(dy, height - dy)
-                        if dx + dy <= self.attack_range:
-                            return agent
-            return None
-        except Exception:
-            return None
-
-    def act(self, environment: 'Earth') -> None:
-        if environment.is_hq(self.get_location()):
-            self.recharge()
-
-        if self.is_exhausted():
-            if not environment.is_hq(self.get_location()):
-                path = self._a_star(environment, self.get_location(), self.hq_location)
-                if path:
-                    self.move_along_path(environment, path)
+    def act(self, mars: 'Mars') -> None:
+        self.check_recharge(mars)
+        hq = self.hq_location(mars)
+        if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
+            self.move_towards(hq, mars)
             return
-
-        surfer = self.find_surfer_in_range(environment)
-        if surfer is not None:
-            self.attack_surfer(surfer)
+        if self.energy <= 0:
+            if not self.at_location(mars, self.get_location(), hq):
+                self.move_towards(hq, mars)
             return
-
-        bridge = environment.get_bridge(self.get_location())
-        if bridge and not bridge.is_complete and not bridge.is_destroyed:
-            self.repair_bridge(environment)
-            return
-
-        super().act(environment)
+        target_surfer = None
+        for row in range(mars.get_height()):
+            for col in range(mars.get_width()):
+                agent = mars.get_agent(Location(col, row))
+                if agent and agent.__class__.__name__ == 'SilverSurfer':
+                    dist = self.distance(self.get_location(), agent.get_location(), mars)
+                    if dist <= self.attack_range:
+                        target_surfer = agent
+                        break
+            if target_surfer:
+                break
+        if target_surfer:
+            if self.energy > 0:
+                target_surfer.energy = max(0, target_surfer.energy - 10)
+                self.energy = max(0, self.energy - 5)
+                return
+        super().act(mars)
 
 
 class BenGrimm(Hero):
+    name = "Ben"
+    repair_rate = 20
 
-    def __init__(self, location: Location, hq_location: Location) -> None:
-        super().__init__("Ben Grimm", location, hq_location)
-
-    def repair_bridge(self, environment: 'Earth') -> None:
-        bridge = environment.get_bridge(self.get_location())
-        if bridge is not None and not bridge.is_destroyed and not bridge.is_complete and not self.is_exhausted():
-            if self._energy >= self.repair_cost:
-                self.consume_energy(self.repair_cost)
-                bridge.repair(self)
-                bridge.repair(self)
-
-    def act(self, environment: 'Earth') -> None:
-        if environment.is_hq(self.get_location()):
-            self.recharge()
-
-        if self.is_exhausted():
-            if not environment.is_hq(self.get_location()):
-                path = self._a_star(environment, self.get_location(), self.hq_location)
-                if path:
-                    self.move_along_path(environment, path)
+    def act(self, mars: 'Mars') -> None:
+        self.check_recharge(mars)
+        hq = self.hq_location(mars)
+        if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
+            self.move_towards(hq, mars)
             return
-
-        bridge = environment.get_bridge(self.get_location())
-        if bridge and not bridge.is_complete and not bridge.is_destroyed:
-            self.repair_bridge(environment)
+        if self.energy <= 0:
+            if not self.at_location(mars, self.get_location(), hq):
+                self.move_towards(hq, mars)
             return
-
-        super().act(environment)
+        for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
+            nx = (self.get_location().get_x() + dx) % mars.get_width()
+            ny = (self.get_location().get_y() + dy) % mars.get_height()
+            agent = mars.get_agent(Location(nx, ny))
+            if agent and agent.__class__.__name__ == 'SilverSurfer':
+                agent.energy = max(0, agent.energy - 20)
+                self.energy = max(0, self.energy - 5)
+                return
+        super().act(mars)
