@@ -13,8 +13,10 @@ class Simulator:
 
     def __init__(self) -> None:
         self._after_id = None
+
         self.step_count = 0
         self.mars = Mars()
+
         self.mission_failed = False
         self.mission_completed = False
         self.status_reason: str = ""
@@ -22,6 +24,7 @@ class Simulator:
         self.heroes: list = []
         self.surfer: SilverSurfer | None = None
         self.galactus: GalactusProjection | None = None
+
         self.bridges: list[Bridge] = []
 
         self._generate_initial_world()
@@ -40,12 +43,14 @@ class Simulator:
             None:               "#0b1220",
         }
 
+        # GUI
         self.gui = Gui(self.mars, self.agent_colours, simulator=self)
         self.gui.render()
 
     def _generate_initial_world(self) -> None:
         width  = self.mars.get_width()
         height = self.mars.get_height()
+
         centre_x = width // 2
         centre_y = height // 2
 
@@ -78,11 +83,13 @@ class Simulator:
         self.galactus_spawn_step = 24
 
     def run(self) -> None:
+        #Start the simulation
         self.is_running = True
         self.paused = False
         self.schedule_next_step()
 
     def schedule_next_step(self) -> None:
+
         delay_ms = max(1, int(1000 / max(0.1, self.simulation_speed)))
         if not self.gui.is_closed() and self.is_running:
             self._after_id = self.gui.after(delay_ms, self._tick)
@@ -90,18 +97,23 @@ class Simulator:
     def _tick(self) -> None:
         if self.gui.is_closed() or not self.is_running:
             return
+
         if self.paused:
             self.schedule_next_step()
             return
+
         self.step_count += 1
         self._update()
         self.gui.render()
+
         if self.mission_failed or self.mission_completed:
             self.is_running = False
             return
         self.schedule_next_step()
 
+
     def _update(self) -> None:
+        # Spawn Silver Surfer
         if self.surfer is None and self.step_count >= self.surfer_spawn_step:
             while True:
                 x = random.randint(0, self.mars.get_width() - 1)
@@ -112,15 +124,18 @@ class Simulator:
                     self.mars.set_agent(self.surfer, loc)
                     break
 
+        # Spawn Galactus
         if self.galactus is None and self.step_count >= self.galactus_spawn_step:
             loc = Location(self.mars.get_width() - 1, self.mars.get_height() - 1)
             self.galactus = GalactusProjection(loc, self.franklin_location)
             self.mars.set_agent(self.galactus, loc)
 
+        # Heroes action
         for hero in list(self.heroes):
             hero.act(self.mars)
 
-        width = self.mars.get_width()
+        # Energy sharing
+        width  = self.mars.get_width()
         height = self.mars.get_height()
         for a in self.heroes:
             for b in self.heroes:
@@ -146,6 +161,7 @@ class Simulator:
                 self.status_reason = "All bridges complete and undamaged"
 
         if not self.mission_completed and hasattr(self.mars, "mission_failed") and self.mars.mission_failed:
+            # Try to infer the cause for a friendly message
             if self.galactus and self._is_at(self.galactus.get_location(), self.franklin_location):
                 self.status_reason = "Galactus reached Franklin"
             else:
@@ -188,6 +204,7 @@ class Simulator:
 
 
 if __name__ == "__main__":
+
     try:
         from view.splash import show_splash
         show_splash("assets/splash.gif", duration_ms=2000)
