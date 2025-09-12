@@ -24,7 +24,6 @@ class GalactusProjection(Agent):
         bridges = mars.get_all_bridges()
         target_loc = self.franklin_location
         if bridges:
-            # Compute centroid of bridges needing attention
             incomplete = [b for b in bridges if not b.is_complete() or b.damaged]
             if incomplete:
                 xs = [b.location.get_x() for b in incomplete]
@@ -55,7 +54,7 @@ class GalactusProjection(Agent):
         if agent:
             mars.set_agent(None, next_loc)
         if (nx, ny) == (self.franklin_location.get_x(), self.franklin_location.get_y()):
-            mars.mission_failed = True  # type: ignore[attr-defined]
+            mars.mission_failed = True
         mars.set_agent(None, current)
         mars.set_agent(self, next_loc)
         self.set_location(next_loc)

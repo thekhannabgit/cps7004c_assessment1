@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 
 class Hero(Agent):
+
     max_energy: int = 100
     repair_rate: int = 10
     attack_range: int = 1
@@ -25,9 +26,11 @@ class Hero(Agent):
         self.is_recharging = False
 
     def hq_location(self, mars: 'Mars') -> Location:
+
         return Location(mars.get_width() // 2, mars.get_height() // 2)
 
     def at_location(self, mars: 'Mars', a: Location, b: Location) -> bool:
+
         return (
             a.get_x() % mars.get_width() == b.get_x() % mars.get_width() and
             a.get_y() % mars.get_height() == b.get_y() % mars.get_height()
@@ -37,6 +40,7 @@ class Hero(Agent):
         return f"{self.name}(energy={self.energy})"
 
     def distance(self, loc1: Location, loc2: Location, mars: 'Mars') -> int:
+
         width = mars.get_width()
         height = mars.get_height()
         dx = abs(loc1.get_x() - loc2.get_x())
@@ -46,6 +50,7 @@ class Hero(Agent):
         return dx + dy
 
     def find_nearest_bridge(self, mars: 'Mars') -> Optional['Bridge']:
+
         bridges = mars.get_all_bridges()
         if not bridges:
             return None
@@ -57,6 +62,7 @@ class Hero(Agent):
         return candidate_bridges[0]
 
     def bfs_path(self, start: Location, goal: Location, mars: 'Mars') -> List[Location]:
+
         width = mars.get_width()
         height = mars.get_height()
         start_coords = (start.get_x(), start.get_y())
@@ -73,6 +79,7 @@ class Hero(Agent):
                 nx = (cx + dx) % width
                 ny = (cy + dy) % height
                 if (nx, ny) not in visited:
+
                     occupant = mars.get_agent(Location(nx, ny))
                     if occupant is None or (nx, ny) == goal_coords:
                         visited.add((nx, ny))
@@ -80,6 +87,7 @@ class Hero(Agent):
         return []
 
     def move_towards(self, target: Location, mars: 'Mars') -> None:
+
         path = self.bfs_path(self.get_location(), target, mars)
         if not path:
             return
@@ -92,15 +100,20 @@ class Hero(Agent):
         self.set_location(new_loc)
 
     def act(self, mars: 'Mars') -> None:
+
         self.check_recharge(mars)
+
         hq = self.hq_location(mars)
+
         if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
             self.move_towards(hq, mars)
             return
+
         if self.energy <= 0:
             if not self.at_location(mars, self.get_location(), hq):
                 self.move_towards(hq, mars)
             return
+
         bridge = self.find_nearest_bridge(mars)
         if bridge is None:
             return
@@ -114,6 +127,7 @@ class Hero(Agent):
             self.move_towards(bridge.location, mars)
 
     def check_recharge(self, mars: 'Mars') -> None:
+
         centre_x = mars.get_width() // 2
         centre_y = mars.get_height() // 2
         loc = self.get_location()
@@ -122,9 +136,11 @@ class Hero(Agent):
 
 
 class ReedRichards(Hero):
+
     name = "Reed"
 
     def act(self, mars: 'Mars') -> None:
+
         self.check_recharge(mars)
         hq = self.hq_location(mars)
         if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
@@ -134,6 +150,7 @@ class ReedRichards(Hero):
             if not self.at_location(mars, self.get_location(), hq):
                 self.move_towards(hq, mars)
             return
+
         surfer = None
         for row in range(mars.get_height()):
             for col in range(mars.get_width()):
@@ -143,9 +160,11 @@ class ReedRichards(Hero):
                     break
             if surfer:
                 break
+
         if surfer:
             bridges = mars.get_all_bridges()
             candidates = [b for b in bridges if not b.is_complete() or getattr(b, "damaged", False)]
+            target_bridge: Optional['Bridge']
             if candidates:
                 candidates.sort(key=lambda b: self.distance(b.location, surfer.get_location(), mars))
                 target_bridge = candidates[0]
@@ -153,8 +172,10 @@ class ReedRichards(Hero):
                 target_bridge = None
         else:
             target_bridge = self.find_nearest_bridge(mars)
+
         if target_bridge is None:
             return
+
         if self.at_location(mars, self.get_location(), target_bridge.location):
             if self.energy > 0:
                 target_bridge.repair(self.repair_rate)
@@ -167,7 +188,9 @@ class SueStorm(Hero):
     name = "Sue"
 
     def act(self, mars: 'Mars') -> None:
+
         self.check_recharge(mars)
+
         hq = self.hq_location(mars)
         if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
             self.move_towards(hq, mars)
@@ -176,6 +199,7 @@ class SueStorm(Hero):
             if not self.at_location(mars, self.get_location(), hq):
                 self.move_towards(hq, mars)
             return
+
         bridge = self.find_nearest_bridge(mars)
         if bridge is None:
             return
@@ -189,11 +213,14 @@ class SueStorm(Hero):
 
 
 class JohnnyStorm(Hero):
+
     name = "Johnny"
     attack_range = 3
 
     def act(self, mars: 'Mars') -> None:
+
         self.check_recharge(mars)
+
         hq = self.hq_location(mars)
         if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
             self.move_towards(hq, mars)
@@ -202,6 +229,7 @@ class JohnnyStorm(Hero):
             if not self.at_location(mars, self.get_location(), hq):
                 self.move_towards(hq, mars)
             return
+
         target_surfer = None
         for row in range(mars.get_height()):
             for col in range(mars.get_width()):
@@ -222,11 +250,14 @@ class JohnnyStorm(Hero):
 
 
 class BenGrimm(Hero):
+
     name = "Ben"
     repair_rate = 20
 
     def act(self, mars: 'Mars') -> None:
+
         self.check_recharge(mars)
+
         hq = self.hq_location(mars)
         if self.energy <= 10 and not self.at_location(mars, self.get_location(), hq):
             self.move_towards(hq, mars)
@@ -235,6 +266,7 @@ class BenGrimm(Hero):
             if not self.at_location(mars, self.get_location(), hq):
                 self.move_towards(hq, mars)
             return
+
         for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
             nx = (self.get_location().get_x() + dx) % mars.get_width()
             ny = (self.get_location().get_y() + dy) % mars.get_height()

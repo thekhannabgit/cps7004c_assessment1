@@ -8,6 +8,7 @@ from model.location import Location
 
 if TYPE_CHECKING:
     from model.agent import Agent
+    from model.bridge import Bridge
 
 
 class Mars(Environment):
@@ -20,13 +21,17 @@ class Mars(Environment):
         Initialises a grid with dimensions based on the world size specified in the Config module.
         """
         super().__init__()
-        self.__grid: List[List[Optional[Agent, None]]] = [
+        self.__grid: List[List[Optional[Agent]]] = [
             [None for _ in range(self.get_width())] for _ in range(self.get_height())
         ]
 
+        self.__bridges: dict[tuple[int, int], "Bridge"] = {}
+        self.mission_failed: bool = False
+
     def clear(self) -> None:
-        """Clears all agents from the grid."""
+        """Clears all agents and bridges from the grid."""
         self.__grid = [[None for _ in range(Config.world_size)] for _ in range(Config.world_size)]
+        self.__bridges.clear()
 
     def get_agent(self, location: Location) -> Optional[Agent, None]:
         """
@@ -91,3 +96,27 @@ class Mars(Environment):
             wrapped_x = location.get_x() % Config.world_size
             wrapped_y = location.get_y() % Config.world_size
             self.__grid[wrapped_y][wrapped_x] = agent
+
+
+    def add_bridge(self, bridge: "Bridge") -> None:
+
+        location = bridge.location
+        wrapped_x = location.get_x() % Config.world_size
+        wrapped_y = location.get_y() % Config.world_size
+        self.__bridges[(wrapped_x, wrapped_y)] = bridge
+
+    def get_bridge(self, location: Location) -> Optional["Bridge"]:
+        if location:
+            wrapped_x = location.get_x() % Config.world_size
+            wrapped_y = location.get_y() % Config.world_size
+            return self.__bridges.get((wrapped_x, wrapped_y))
+        return None
+
+    def remove_bridge(self, location: Location) -> None:
+        if location:
+            wrapped_x = location.get_x() % Config.world_size
+            wrapped_y = location.get_y() % Config.world_size
+            self.__bridges.pop((wrapped_x, wrapped_y), None)
+
+    def get_all_bridges(self) -> list["Bridge"]:
+        return list(self.__bridges.values())
